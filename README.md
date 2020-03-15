@@ -15,7 +15,7 @@ The value written at the given symbol depends on the symbol size. Symbols in ass
 
 For the program **global.c**:
 
-```
+```c
 #include <stdio.h>
 
 static int var = 5;
