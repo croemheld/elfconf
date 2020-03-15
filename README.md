@@ -33,7 +33,7 @@ Value of var: 5
 ```
 By using **elfconf**, we want to set the value of the variable `var` to 1337:
 ```
-$ elfconf -f global.o -s var -v 1337
+ $ elfconf -f global.o -s var -v 1337
 ```
 Subsequently, the program will now return:
 ```
