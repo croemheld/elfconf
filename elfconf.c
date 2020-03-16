@@ -356,7 +356,7 @@ static void *find_elf32_section(struct elfconf_elf32file *elf, char *name, unsig
 	return NULL;
 }
 
-static void parse_elf32_file(struct elfconf_arguments *args, struct elfconf_elf32file *elf) {
+static int parse_elf32_file(struct elfconf_arguments *args, struct elfconf_elf32file *elf) {
 	/* Initialize pointers to section headers */
 	elf->ehdr = elf_offset(args, 0);
 	elf->shdr = elf_offset(args, elf->ehdr->e_shoff);
@@ -366,7 +366,14 @@ static void parse_elf32_file(struct elfconf_arguments *args, struct elfconf_elf3
 
 	/* Search for .symtab and .strtab section */
 	elf->symtab = find_elf32_section(elf, ELFCONF_SECTION_SYMTAB, &elf->numsyms);
+	if (!elf->symtab)
+		return -ENAVAIL;
+
 	elf->strtab = find_elf32_section(elf, ELFCONF_SECTION_STRTAB, NULL);
+	if (!elf->strtab)
+		return -ENAVAIL;
+
+	return 0;
 }
 
 static Elf32_Sym *find_elf32_symbol(struct elfconf_elf32file *elf, char *name) {
@@ -408,7 +415,8 @@ static int apply_elf32_args(struct elfconf_arguments *args) {
 	struct elfconf_elf32file elf;
 
 	/* Fill up data structure */
-	parse_elf32_file(args, &elf);
+	if (parse_elf32_file(args, &elf))
+		return -EFAULT;
 
 	/* Search and modify symbol */
 	if (configure_elf32_symbol(args, &elf))
