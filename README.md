@@ -40,7 +40,11 @@ Subsequently, the program will now return:
  $ ./global.o
 Value of var: 1337
 ```
-> Note: It is not possible to set variables in the `.bss` section of an ELF object, as this section is zeroed out when it is loaded into memory.
+
+### Notes
+
+* It is not possible to set variables in the `.bss` section of an ELF object, as this section is zeroed out when it is loaded into memory.
+* The elfconf tool will only work on symbols that are defined in the particular ELF. It is not possible to manipulate undefined symbols.
 
 ### Future work
 
