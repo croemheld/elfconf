@@ -312,7 +312,7 @@ static void print_elfconf_ehdr(char *name, struct elfconf_ehdr *ehdr) {
 #define elf_symbol_name(elf, sym)		(elf)->strtab + (sym)->st_name
 
 /* Get the offset of a symbol in the ELF binary */
-#define elf_symbol_offset(elf, sym)	 ({											\
+#define elf_symbol_offset(elf, sym)	 ({		\
 	typeof((elf)->shdr) __section = elf_section_header(elf, (sym)->st_shndx);	\
 	(sym)->st_value - (__section)->sh_addr + (__section)->sh_offset;			\
 })
