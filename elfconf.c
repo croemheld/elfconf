@@ -273,357 +273,352 @@ static const char *ehdr_earch[] = {
 #endif
 
 /*
- * struct elfhead functions: alloc, search, insert, delete
+ * Printing functions
  */
 
-static struct elfhead *alloc_elfhead(char *symname, void *sym) {
-    struct elfhead *elfhead = malloc(sizeof(struct elfhead));
-
-    if (!elfhead)
-        return NULL;
-
-    elfhead->symname = symname;
-    elfhead->sym = sym;
-
-    /* Initialize list pointers */
-    elfhead->next = NULL;
-
-    return elfhead;
+static void print_elfconf_info(char *name) {
+	printf("Usage: %s {-h | -f <filename> -s <symbol> -v <value>}\n", name);
 }
 
-static struct elfhead *search_elfhead(const char *symbol) {
-    struct elfhead *head;
+static void print_elfconf_ehdr(char *name, struct elfconf_ehdr *ehdr) {
+#ifdef ELFCONF_DEBUG
+	printf("elfconf: Information about ELF %s\n", name);
 
-    for (head = symbols; head != NULL; head = head->next) {
-        if (strcmp(symbol, head->symname))
-            continue;
+	/* ELF class: 32-bit or 64-bit */
+	printf("%-20s %s\n", "ELF object class:", ehdr_class[ehdr->e_ident[EI_CLASS]]);
 
-        return head;
-    }
+	/* ELF object type (ET_REL, ET_EXEC, ET_DYN, ET_CORE) */
+	if (ehdr->e_type >= ET_LOPROC && ehdr->e_type <= ET_HIPROC)
+		printf("%-20s %s\n", "ELF object type:", "Processor-specific file");
+	else
+		printf("%-20s %s\n", "ELF object type:", ehdr_etype[ehdr->e_type]);
 
-    return NULL;
-}
-
-static void insert_elfhead(struct elfhead *elfhead) {
-    if (symbols != NULL)
-        elfhead->next = symbols;
-
-    symbols = elfhead;
-}
-
-static void delete_symbols(void) {
-    struct elfhead *head, *next;
-
-    head = symbols;
-
-    while (head) {
-        next = head->next;
-        free(head);
-        head = next;
-    }
+	/* ELF architecture */
+	printf("%-20s %s\n", "ELF architecture:", ehdr_earch[ehdr->e_machine]);
+#endif
 }
 
 /*
- * Utilities: Sections, symbols
+ * General ELF helper functions and macros (for both 32-bit and 64-bit)
  */
 
-/* Only available after ELF has been read into buffer */
+/* Section relevant macros */
+#define elf_section_header(elf, shndx)	(elf)->shdr + shndx
+#define elf_section(elf, shndx)			(elf)->head + ((elf)->shdr + shndx)->sh_offset
+#define elf_section_name(elf, name)		(elf)->shstrtab + name
 
-static void *elf_offset(long offset) {
-    return elffile.elf + offset;
+/* Symbol relevant macros */
+#define elf_symbol(elf, symndx)			(elf)->symtab + symndx
+#define elf_symbol_name(elf, sym)		(elf)->strtab + (sym)->st_name
+
+/* Get the offset of a symbol in the ELF binary */
+#define elf_symbol_offset(elf, sym)	 ({											\
+	typeof((elf)->shdr) __section = elf_section_header(elf, (sym)->st_shndx);	\
+	(sym)->st_value - (__section)->sh_addr + (__section)->sh_offset;			\
+})
+
+/*
+ * Parsing ELF file
+ */
+
+static inline void *elf_offset(struct elfconf_arguments *args, unsigned long offset) {
+	return args->buf + offset;
 }
 
-/* Only available after elffile fully initialized */
+static void clear_elfconf_file(struct elfconf_arguments *args) {
+	if (args->efp)
+		fclose(args->efp);
 
-static Elf32_Shdr *elf32_section(int shndx) {
-    if (shndx >= elffile.elf32Ehdr->e_shnum)
-        return NULL;
-
-    return &elffile.elf32Shdr[shndx];
-}
-
-static Elf64_Shdr *elf64_section(int shndx) {
-    if (shndx >= elffile.elf64Ehdr->e_shnum)
-        return NULL;
-
-    return &elffile.elf64Shdr[shndx];
-}
-
-static char *section_name(int name) {
-    return elffile.shstrtab + name;
-}
-
-static Elf32_Sym *elf32_symbol(int symndx) {
-    if (symndx >= elffile.numsyms)
-        return NULL;
-
-    return &elffile.elf32Syms[symndx];
-}
-
-static Elf64_Sym *elf64_symbol(int symndx) {
-    if (symndx >= elffile.numsyms)
-        return NULL;
-
-    return &elffile.elf64Syms[symndx];
-}
-
-static char *symbol_name(int name) {
-    return elffile.strtab + name;
+	if (args->buf)
+		free(args->buf);
 }
 
 /*
- * Configuring struct elffile
+ * 32-bit ELF functions
  */
 
-static void setup32_elffile(void) {
-    Elf32_Shdr *section;
-    void *secaddr;
-    int index, numsyms;
-    char *symbol;
-    struct elfhead *elfsym;
+static void *find_elf32_section(struct elfconf_elf32file *elf, char *name, unsigned int *num) {
+	Elf32_Shdr *section;
+	unsigned int shndx;
 
-    /* Ignore all other ELF classes. Handle them separately */
-    if (elffile.elf32Ehdr->e_ident[EI_CLASS] != ELFCLASS32)
-        return;
+	for (shndx = 0; shndx < elf->ehdr->e_shnum; shndx++) {
+		section = elf_section_header(elf, shndx);
 
-    /* Assign adress of section headers to member variable */
-    elffile.elf32Shdr = elf_offset(elffile.elf32Ehdr->e_shoff);
+		if (strcmp(name, elf_section_name(elf, section->sh_name)))
+			continue;
 
-    /* Assign symbol and string tables sections to elffile */
-    for (index = 0; index < elffile.elf32Ehdr->e_shnum; index++) {
-        section = elf32_section(index);
-        secaddr = elf_offset(section->sh_offset);
+		if (num)
+			*num = section->sh_size / section->sh_entsize;
 
-        if (section->sh_type == SHT_SYMTAB) {
-            elffile.elf32Syms = secaddr;
-            elffile.numsyms = section->sh_size / section->sh_entsize;
-        } else if (section->sh_type == SHT_STRTAB) {
-            if (index == elffile.elf32Ehdr->e_shstrndx)
-                elffile.shstrtab = secaddr;
-            else
-                elffile.strtab = secaddr;
-        }
-    }
+		return elf_section(elf, shndx);
+	}
 
-    /* Setup symbol table for lookup */
-    for (index = 0; index < elffile.numsyms; index++) {
-        symbol = elffile.strtab + elffile.elf32Syms[index].st_name;
-        elfsym = alloc_elfhead(symbol, &elffile.elf32Syms[index]);
-        if (!elfsym) {
-            delete_symbols();
-            free(elffile.elf);
-            return;
-        }
-
-        insert_elfhead(elfsym);
-    }
+	return NULL;
 }
 
-static void setup64_elffile(void) {
-    Elf64_Shdr *section;
-    void *secaddr;
-    int index, numsyms;
-    char *symbol;
-    struct elfhead *elfsym;
+static void parse_elf32_file(struct elfconf_arguments *args, struct elfconf_elf32file *elf) {
+	/* Initialize pointers to section headers */
+	elf->ehdr = elf_offset(args, 0);
+	elf->shdr = elf_offset(args, elf->ehdr->e_shoff);
 
-    /* Ignore all other ELF classes. Handle them separately */
-    if (elffile.elf64Ehdr->e_ident[EI_CLASS] != ELFCLASS64)
-        return;
+	/* Assign .shstrtab section first */
+	elf->shstrtab = elf_section(elf, elf->ehdr->e_shstrndx);
 
-    /* Assign adress of section headers to member variable */
-    elffile.elf64Shdr = elf_offset(elffile.elf64Ehdr->e_shoff);
-
-    /* Assign symbol and string tables sections to elffile */
-    for (index = 0; index < elffile.elf64Ehdr->e_shnum; index++) {
-        section = &elffile.elf64Shdr[index];
-        secaddr = elffile.elf + section->sh_offset;
-
-        if (section->sh_type == SHT_SYMTAB) {
-            elffile.elf64Syms = secaddr;
-            elffile.numsyms = section->sh_size / section->sh_entsize;
-        } else if (section->sh_type == SHT_STRTAB) {
-            if (index == elffile.elf64Ehdr->e_shstrndx)
-                elffile.shstrtab = secaddr;
-            else
-                elffile.strtab = secaddr;
-        }
-    }
-
-    /* Setup symbol table for lookup */
-    for (index = 0; index < elffile.numsyms; index++) {
-        symbol = elffile.strtab + elffile.elf32Syms[index].st_name;
-        elfsym = alloc_elfhead(symbol, &elffile.elf32Syms[index]);
-        if (!elfsym) {
-            delete_symbols();
-            free(elffile.elf);
-            return;
-        }
-
-        insert_elfhead(elfsym);
-    }
+	/* Search for .symtab and .strtab section */
+	elf->symtab = find_elf32_section(elf, ELFCONF_SECTION_SYMTAB, &elf->numsyms);
+	elf->strtab = find_elf32_section(elf, ELFCONF_SECTION_STRTAB, NULL);
 }
 
-static int read_elffile(const char *filename) {
-    FILE *fp;
-    size_t size;
+static Elf32_Sym *find_elf32_symbol(struct elfconf_elf32file *elf, char *name) {
+	Elf32_Sym *symbol;
+	unsigned int index;
 
-    fp = fopen(filename, "rb+");
+	for(index = 0; index < elf->numsyms; index++) {
+		symbol = elf_symbol(elf, index);
+		if (strcmp(name, elf_symbol_name(elf, symbol)))
+			continue;
 
-    if (!fp)
-        return 1;
+		return symbol;
+	}
 
-    /* Get size of file */
-    fseek(fp, 0L, SEEK_END);
-    size = ftell(fp);
+	return NULL;
+}
 
-    elffile.elf = malloc(size);
-    if (!elffile.elf) {
-        fclose(fp);
-        return 1;
-    }
+static int configure_elf32_symbol(struct elfconf_arguments *args, struct elfconf_elf32file *elf) {
+	Elf32_Sym *symbol;
+	size_t offset, write;
 
-    /* Read entire file into buffer */
-    fseek(fp, 0L, SEEK_SET);
-    if (fread(elffile.elf, 1, size, fp) != size) {
-        free(elffile.elf);
-        fclose(fp);
-        return 1;
-    }
+	symbol = find_elf32_symbol(elf, args->sym);
+	if (!symbol)
+		return -ENAVAIL;
 
-    setup32_elffile();
-    setup64_elffile();
+	/* Move pointer to the symbol in the ELF file */
+	offset = elf_symbol_offset(elf, symbol);
+	fseek(args->efp, offset, SEEK_SET);
 
-    elffile.fp = fp;
+	/* Write new value at the specified symbol */
+	write = fwrite(&args->val, 1, symbol->st_size, args->efp);
+	if (write != symbol->st_size)
+		return -EBADFD;
 
-    return 0;
+	return 0;
+}
+
+static int apply_elf32_args(struct elfconf_arguments *args) {
+	struct elfconf_elf32file elf;
+
+	/* Fill up data structure */
+	parse_elf32_file(args, &elf);
+
+	/* Search and modify symbol */
+	if (configure_elf32_symbol(args, &elf))
+		return -EFAULT;
+
+	return 0;
 }
 
 /*
- * Manipulating ELF file
+ * 64-bit ELF functions
  */
 
-static size_t elf32_symbol_offset(Elf32_Sym *symbol) {
-    Elf32_Shdr *section = &elffile.elf32Shdr[symbol->st_shndx];
+static void *find_elf64_section(struct elfconf_elf64file *elf, char *name, unsigned int *num) {
+	Elf64_Shdr *section;
+	unsigned int shndx;
 
-    return symbol->st_value - section->sh_addr + section->sh_offset;
+	for (shndx = 0; shndx < elf->ehdr->e_shnum; shndx++) {
+		section = elf_section_header(elf, shndx);
+
+		if (strcmp(name, elf_section_name(elf, section->sh_name)))
+			continue;
+
+		if (num)
+			*num = section->sh_size / section->sh_entsize;
+
+		return elf_section(elf, shndx);
+	}
+
+	return NULL;
 }
 
-static size_t elf64_symbol_offset(Elf64_Sym *symbol) {
-    Elf64_Shdr *section = &elffile.elf64Shdr[symbol->st_shndx];
+static int parse_elf64_file(struct elfconf_arguments *args, struct elfconf_elf64file *elf) {
+	/* Initialize pointers to section headers */
+	elf->ehdr = elf_offset(args, 0);
+	elf->shdr = elf_offset(args, elf->ehdr->e_shoff);
 
-    return symbol->st_value - section->sh_addr + section->sh_offset;
+	/* Assign .shstrtab section first */
+	elf->shstrtab = elf_section(elf, elf->ehdr->e_shstrndx);
+
+	/* Search for .symtab and .strtab section */
+	elf->symtab = find_elf64_section(elf, ELFCONF_SECTION_SYMTAB, &elf->numsyms);
+	if (!elf->symtab)
+		return -ENAVAIL;
+
+	elf->strtab = find_elf64_section(elf, ELFCONF_SECTION_STRTAB, NULL);
+	if (!elf->strtab)
+		return -ENAVAIL;
+
+	return 0;
 }
 
-static int manipulate_elf32(struct elfargs *args, struct elfhead *symbol) {
-    size_t offset = elf32_symbol_offset(symbol->elf32Sym);
+static Elf64_Sym *find_elf64_symbol(struct elfconf_elf64file *elf, char *name) {
+	Elf64_Sym *symbol;
+	unsigned int index;
 
-    /* Symbol has to be in this ELF to be manipulated */
-    if (symbol->elf32Sym->st_shndx == SHN_UNDEF)
-        return 1;
+	for(index = 0; index < elf->numsyms; index++) {
+		symbol = elf_symbol(elf, index);
+		if (strcmp(name, elf_symbol_name(elf, symbol)))
+			continue;
 
-    printf("Symbol located at %lx in ELF (Size: %lu Bytes)\n", offset, symbol->elf32Sym->st_size);
+		return symbol;
+	}
 
-    fseek(elffile.fp, offset, SEEK_SET);
-
-    if (fwrite(&elfargs.value, 1, symbol->elf32Sym->st_size, elffile.fp) != symbol->elf32Sym->st_size)
-        return 1;
-
-    return 0;
+	return NULL;
 }
 
-static int manipulate_elf64(struct elfargs *args, struct elfhead *symbol) {
-    size_t offset = elf64_symbol_offset(symbol->elf64Sym);
+static int configure_elf64_symbol(struct elfconf_arguments *args, struct elfconf_elf64file *elf) {
+	Elf64_Sym *symbol;
+	size_t offset, write;
 
-    /* Symbol has to be in this ELF to be manipulated */
-    if (symbol->elf64Sym->st_shndx == SHN_UNDEF)
-        return 1;
+	symbol = find_elf64_symbol(elf, args->sym);
+	if (!symbol)
+		return -ENAVAIL;
 
-    printf("Symbol located at %lx in ELF (Size: %lu Bytes)\n", offset, symbol->elf64Sym->st_size);
+	/* Move pointer to the symbol in the ELF file */
+	offset = elf_symbol_offset(elf, symbol);
+	fseek(args->efp, offset, SEEK_SET);
 
-    fseek(elffile.fp, offset, SEEK_SET);
+	/* Write new value at the specified symbol */
+	write = fwrite(&args->val, 1, symbol->st_size, args->efp);
+	if (write != symbol->st_size)
+		return -EBADFD;
 
-    if (fwrite(&elfargs.value, 1, symbol->elf64Sym->st_size, elffile.fp) != symbol->elf64Sym->st_size)
-        return 1;
-
-    return 0;
+	return 0;
 }
 
-static int manipulate_elf(struct elfargs *args) {
-    struct elfhead *symbol = search_elfhead(args->symbol);
+static int apply_elf64_args(struct elfconf_arguments *args) {
+	struct elfconf_elf64file elf;
 
-    if (!symbol)
-        return 1;
+	/* Fill up data structure */
+	if (parse_elf64_file(args, &elf))
+		return -EFAULT;
 
-    if (elffile.elf32Ehdr->e_ident[EI_CLASS] == ELFCLASS32)
-        return manipulate_elf32(args, symbol);
-    else
-        return manipulate_elf64(args, symbol);
+	/* Search and modify symbol */
+	if (configure_elf64_symbol(args, &elf))
+		return -EFAULT;
+
+	return 0;
+}
+
+static int parse_elfconf_file(struct elfconf_arguments *args) {
+	struct elfconf_ehdr *ehdr = args->buf;
+
+	/* Validate ELF signature at beginning of file */
+	if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG))
+		return -ENOTSUP;
+
+	print_elfconf_ehdr(args->elf, ehdr);
+
+	/*
+	 * Determine ELF class: 32-bit or 64-bit
+	 */
+
+	if (ehdr->e_ident[EI_CLASS] == ELFCLASS32)
+		return apply_elf32_args(args);
+
+	if (ehdr->e_ident[EI_CLASS] == ELFCLASS64)
+		return apply_elf64_args(args);
+
+	return -ENOTSUP;
+}
+
+static int apply_elfconf_args(struct elfconf_arguments *args) {
+	size_t size, read;
+
+	/* Open ELF file */
+	args->efp = fopen(args->elf, "rb+");
+	if (!args->efp)
+		return -EBADFD;
+
+	/* Get ELF size */
+	fseek(args->efp, 0L, SEEK_END);
+	size = ftell(args->efp);
+
+	/* Alloc buffer and read ELF */
+	args->buf = malloc(size);
+	if (!args->buf) {
+		clear_elfconf_file(args);
+		return -ENOMEM;
+	}
+
+	fseek(args->efp, 0L, SEEK_SET);
+	read = fread(args->buf, 1, size, args->efp);
+	if (read != size) {
+		clear_elfconf_file(args);
+		return -EBADFD;
+	}
+
+	if (parse_elfconf_file(args)) {
+		clear_elfconf_file(args);
+		return -EFAULT;
+	}
+
+	return 0;
 }
 
 /*
- * Argument parser
+ * Parsing arguments
  */
 
-static void show_elfconf_options(char * const program) {
-    printf("Usage: %s {-h | -f <filename> -s <symbol> -v <value>}\n", program);
+static int parse_elfconf_args(int argc, char *argv[], struct elfconf_arguments *args)
+{
+	int option;
+
+	/*
+	 * Options supported by elfconf:
+	 *
+	 * -h: Show usage of this program and quit.
+	 *
+	 * The following options need to be specified together:
+	 *
+	 * -f: ELF input file to be manipulated.
+	 * -s: Symbol name in ELF which we want to modify.
+	 * -v: The value that should be written to the symbol.
+	 */
+
+	while ((option = getopt(argc, argv, "hf:s:v:")) != -1) {
+		switch (option) {
+			case 'h':
+				print_elfconf_info(argv[0]);
+				return 1;
+			case 'f':
+				args->elf = optarg;
+				break;
+			case 's':
+				args->sym = optarg;
+				break;
+			case 'v':
+				args->val = strtoull(optarg, NULL, 0);
+				break;
+			case '?':
+				return -EFAULT;
+			default:
+				abort();
+		}
+	}
+
+	return 0;
 }
 
-static int read_elfargs(int argc, char * const argv[]) {
-    int c, i;
-    char *end;
+int main(int argc, char *argv[]) {
+	struct elfconf_arguments args;
 
-    while((c = getopt(argc, argv, "hf:s:v:")) != -1) {
-        switch (c) {
-            case 'h':
-                show_elfconf_options(argv[0]);
-                return 0;
-            case 'f':
-                elfargs.filename = optarg;
-                break;
-            case 's':
-                elfargs.symbol = optarg;
-                break;
-            case 'v':
-                elfargs.value = strtoull(optarg, &end, 0);
-                break;
-            case '?':
-                if (optopt == 'f' || optopt == 's' || optopt == 'v')
-                    printf("Option -%c requires an argument!\n", optopt);
-                else if (isprint(optopt))
-                    printf("Unknown option '-%c'\n", optopt);
-                else
-                    printf("Unknown option '\\x%x'\n", optopt);
+	if (parse_elfconf_args(argc, argv, &args))
+		return -EFAULT;
 
-                return 1;
-            default:
-                abort();
-        }
-    }
+	if (apply_elfconf_args(&args))
+		return -EFAULT;
 
-    for (i = optind; i < argc; i++)
-        printf("Non-option argument %s, ignore...\n", argv[i]);
+	clear_elfconf_file(&args);
 
-    return 0;
-}
-
-int main(int argc, char * const argv[]) {
-    int ret;
-
-    /* Parse arguments */
-    ret = read_elfargs(argc, argv);
-    if (ret)
-        return 1;
-
-    /* Load ELF */
-    ret = read_elffile(elfargs.filename);
-    if (ret)
-        return 1;
-
-    ret = manipulate_elf(&elfargs);
-
-    fclose(elffile.fp);
-    free(elffile.elf);
-    delete_symbols();
-
-    return ret;
+	return 0;
 }
