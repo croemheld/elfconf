@@ -276,29 +276,29 @@ static const char *ehdr_earch[] = {
  */
 
 static const char *section_type[] = {
-        "NULL",
-        "PROGBITS",
-        "SYMTAB",
-        "STRTAB",
-        "RELA",
-        "HASH",
-        "DYNAMIC",
-        "NOTE",
-        "NOBITS",
-        "REL",
-        "SHLIB",
-        "DYNSYM"
+		"NULL",
+		"PROGBITS",
+		"SYMTAB",
+		"STRTAB",
+		"RELA",
+		"HASH",
+		"DYNAMIC",
+		"NOTE",
+		"NOBITS",
+		"REL",
+		"SHLIB",
+		"DYNSYM"
 };
 
 static const char *section_flags[] = {
-        "",
-        "W",
-        "A",
-        "WA",
-        "X",
-        "WX",
-        "AX",
-        "WAX"
+		"",
+		"W",
+		"A",
+		"WA",
+		"X",
+		"WX",
+		"AX",
+		"WAX"
 };
 
 /*
@@ -306,17 +306,17 @@ static const char *section_flags[] = {
  */
 
 static const char *symbol_info_bind[] = {
-        "LOCAL",
-        "GLOBAL",
-        "WEAK"
+		"LOCAL",
+		"GLOBAL",
+		"WEAK"
 };
 
 static const char *symbol_info_type[] = {
-        "NOTYPE",
-        "OBJECT",
-        "FUNC",
-        "SECTION",
-        "FILE"
+		"NOTYPE",
+		"OBJECT",
+		"FUNC",
+		"SECTION",
+		"FILE"
 };
 
 /*
@@ -357,79 +357,79 @@ static void print_elfconf_info(char *name) {
 
 static void print_elfconf_ehdr(char *name, struct elfconf_ehdr *ehdr) {
 #ifdef ELFCONF_DEBUG
-    printf("elfconf: Information about ELF %s\n", name);
+	printf("elfconf: Information about ELF %s\n", name);
 
 	/* ELF class: 32-bit or 64-bit */
-    printf("%-20s %s\n", "ELF object class:", ehdr_class[ehdr->e_ident[EI_CLASS]]);
+	printf("%-20s %s\n", "ELF object class:", ehdr_class[ehdr->e_ident[EI_CLASS]]);
 
 	/* ELF object type (ET_REL, ET_EXEC, ET_DYN, ET_CORE) */
 	if (ehdr->e_type >= ET_LOPROC && ehdr->e_type <= ET_HIPROC)
-        printf("%-20s %s\n", "ELF object type:", "Processor-specific file");
+		printf("%-20s %s\n", "ELF object type:", "Processor-specific file");
 	else
-        printf("%-20s %s\n", "ELF object type:", ehdr_etype[ehdr->e_type]);
+		printf("%-20s %s\n", "ELF object type:", ehdr_etype[ehdr->e_type]);
 
 	/* ELF architecture */
-    printf("%-20s %s\n", "ELF architecture:", ehdr_earch[ehdr->e_machine]);
+	printf("%-20s %s\n", "ELF architecture:", ehdr_earch[ehdr->e_machine]);
 #endif
 }
 
 static void print_elf32_symbol_info(struct elfconf_elf32file *elf, Elf32_Sym *symbol) {
 #ifdef ELFCONF_DEBUG
-    Elf64_Shdr *section = elf_section_header(elf, symbol->st_shndx);
+	Elf64_Shdr *section = elf_section_header(elf, symbol->st_shndx);
 
-    /* Show information for specified symbol */
-    printf("Showing information for symbol %s:\n", elf_symbol_name(elf, symbol));
-    printf("%-16s %-4s %-7s %-6s %-3s %s\n",
-           "Value", "Size", "Type", "Bind", "Ndx", "Name");
-    printf("%016lx %4u %-7s %-6s %3u %s\n",
-           symbol->st_value,
-           symbol->st_size,
-           symbol_info_type[elf_symbol_type(symbol)],
-           symbol_info_bind[elf_symbol_bind(symbol)],
-           symbol->st_shndx,
-           elf_symbol_name(elf, symbol));
+	/* Show information for specified symbol */
+	printf("Showing information for symbol %s:\n", elf_symbol_name(elf, symbol));
+	printf("%-16s %-4s %-7s %-6s %-3s %s\n",
+		   "Value", "Size", "Type", "Bind", "Ndx", "Name");
+	printf("%016lx %4u %-7s %-6s %3u %s\n",
+		   symbol->st_value,
+		   symbol->st_size,
+		   symbol_info_type[elf_symbol_type(symbol)],
+		   symbol_info_bind[elf_symbol_bind(symbol)],
+		   symbol->st_shndx,
+		   elf_symbol_name(elf, symbol));
 
-    /* Show information of section the specified symbol resides in */
-    printf("Showing information for section %s:\n", elf_section_name(elf, section->sh_name));
-    printf("%4s %-16s %-16s %-10s %-5s %s\n",
-           "[Nr]", "Address", "Size", "Type", "Flags", "Name");
-    printf("[%u] %016lx %016lx %-10s %-5s %s\n",
-           symbol->st_shndx,
-           section->sh_addr,
-           section->sh_size,
-           section_type[section->sh_type],
-           section_flags[section->sh_flags],
-           elf_section_name(elf, section->sh_name));
+	/* Show information of section the specified symbol resides in */
+	printf("Showing information for section %s:\n", elf_section_name(elf, section->sh_name));
+	printf("%4s %-16s %-16s %-10s %-5s %s\n",
+		   "[Nr]", "Address", "Size", "Type", "Flags", "Name");
+	printf("[%u] %016lx %016lx %-10s %-5s %s\n",
+		   symbol->st_shndx,
+		   section->sh_addr,
+		   section->sh_size,
+		   section_type[section->sh_type],
+		   section_flags[section->sh_flags],
+		   elf_section_name(elf, section->sh_name));
 #endif
 }
 
 static void print_elf64_symbol_info(struct elfconf_elf64file *elf, Elf64_Sym *symbol) {
 #ifdef ELFCONF_DEBUG
-    Elf64_Shdr *section = elf_section_header(elf, symbol->st_shndx);
+	Elf64_Shdr *section = elf_section_header(elf, symbol->st_shndx);
 
-    /* Show information for specified symbol */
-    printf("Showing information for symbol %s:\n", elf_symbol_name(elf, symbol));
-    printf("%-16s %-4s %-7s %-6s %-3s %s\n",
-           "Value", "Size", "Type", "Bind", "Ndx", "Name");
-    printf("%016lx %4u %-7s %-6s %3u %s\n",
-           symbol->st_value,
-           symbol->st_size,
-           symbol_info_type[elf_symbol_type(symbol)],
-           symbol_info_bind[elf_symbol_bind(symbol)],
-           symbol->st_shndx,
-           elf_symbol_name(elf, symbol));
+	/* Show information for specified symbol */
+	printf("Showing information for symbol %s:\n", elf_symbol_name(elf, symbol));
+	printf("%-16s %-4s %-7s %-6s %-3s %s\n",
+		   "Value", "Size", "Type", "Bind", "Ndx", "Name");
+	printf("%016lx %4u %-7s %-6s %3u %s\n",
+		   symbol->st_value,
+		   symbol->st_size,
+		   symbol_info_type[elf_symbol_type(symbol)],
+		   symbol_info_bind[elf_symbol_bind(symbol)],
+		   symbol->st_shndx,
+		   elf_symbol_name(elf, symbol));
 
-    /* Show information of section the specified symbol resides in */
-    printf("Showing information for section %s:\n", elf_section_name(elf, section->sh_name));
-    printf("%4s %-16s %-16s %-10s %-5s %s\n",
-            "[Nr]", "Address", "Size", "Type", "Flags", "Name");
-    printf("[%u] %016lx %016lx %-10s %-5s %s\n",
-            symbol->st_shndx,
-            section->sh_addr,
-            section->sh_size,
-            section_type[section->sh_type],
-            section_flags[section->sh_flags],
-            elf_section_name(elf, section->sh_name));
+	/* Show information of section the specified symbol resides in */
+	printf("Showing information for section %s:\n", elf_section_name(elf, section->sh_name));
+	printf("%4s %-16s %-16s %-10s %-5s %s\n",
+			"[Nr]", "Address", "Size", "Type", "Flags", "Name");
+	printf("[%u] %016lx %016lx %-10s %-5s %s\n",
+			symbol->st_shndx,
+			section->sh_addr,
+			section->sh_size,
+			section_type[section->sh_type],
+			section_flags[section->sh_flags],
+			elf_section_name(elf, section->sh_name));
 #endif
 }
 
@@ -601,7 +601,7 @@ static Elf64_Sym *find_elf64_symbol(struct elfconf_elf64file *elf, char *name) {
 		if (symbol->st_shndx == SHN_UNDEF)
 			return NULL;
 
-        print_elf64_symbol_info(elf, symbol);
+		print_elf64_symbol_info(elf, symbol);
 
 		return symbol;
 	}
